@@ -3,7 +3,7 @@
 # written by Jeffrey Gelens (http://noppo.pro/) and licensed under the Apache License, Version 2.0
 import struct
 from socket import error as socket_error
-from utf8validator import Utf8Validator
+from .utf8validator import Utf8Validator
 from django.core.handlers.wsgi import logger
 from ws4redis.exceptions import WebSocketError, FrameTooLargeException
 
@@ -36,7 +36,7 @@ class WebSocket(object):
         If the conversion fails, the socket will be closed.
         """
         if not bytestring:
-            return u''
+            return ''
         try:
             return bytestring.decode('utf-8')
         except UnicodeDecodeError:
@@ -47,10 +47,8 @@ class WebSocket(object):
         """
         :returns: The utf-8 byte string equivalent of `text`.
         """
-        if isinstance(text, str):
+        if (isinstance(text, bytes)):
             return text
-        if not isinstance(text, unicode):
-            text = unicode(text or '')
         return text.encode('utf-8')
 
     def _is_valid_close_code(self, code):
@@ -90,7 +88,7 @@ class WebSocket(object):
             return
         if len(payload) < 2:
             raise WebSocketError('Invalid close frame: {0} {1}'.format(header, payload))
-        code = struct.unpack('!H', str(payload[:2]))[0]
+        code = struct.unpack(b'!H', str(payload[:2]))[0]
         payload = payload[2:]
         if payload:
             validator = Utf8Validator()
@@ -120,7 +118,7 @@ class WebSocket(object):
         if header.flags:
             raise WebSocketError
         if not header.length:
-            return header, ''
+            return header, b''
         try:
             payload = self.stream.read(header.length)
         except socket_error:
@@ -203,7 +201,7 @@ class WebSocket(object):
         except WebSocketError:
             logger.info('websocket.receive: WebSocketError')
             self.close(1002)
-        except Exception, e:
+        except Exception as e:
             logger.info('websocket.receive: Unknown error %s', e)
             raise e
 
@@ -222,7 +220,7 @@ class WebSocket(object):
         if opcode == self.OPCODE_TEXT:
             message = self._encode_bytes(message)
         elif opcode == self.OPCODE_BINARY:
-            message = str(message)
+            message = bytes(message)
         header = Header.encode_header(True, opcode, '', len(message), 0)
         try:
             self.stream.write(header + message)
@@ -234,7 +232,7 @@ class WebSocket(object):
         Send a frame over the websocket with message as its payload
         """
         if binary is None:
-            binary = not isinstance(message, (str, unicode))
+            binary = not isinstance(message, str)
         opcode = self.OPCODE_BINARY if binary else self.OPCODE_TEXT
         try:
             self.send_frame(message, opcode)
@@ -250,7 +248,7 @@ class WebSocket(object):
         try:
             message = self._encode_bytes(message)
             self.send_frame(
-                struct.pack('!H%ds' % len(message), code, message),
+                struct.pack(b'!H%ds' % len(message), code, message),
                 opcode=self.OPCODE_CLOSE)
         except WebSocketError:
             # Failed to write the closing frame but it's ok because we're
@@ -271,9 +269,9 @@ class Stream(object):
     __slots__ = ('read', 'write', 'fileno')
 
     def __init__(self, wsgi_input):
-        self.read = wsgi_input._sock.recv
-        self.write = wsgi_input._sock.sendall
-        self.fileno = wsgi_input._sock.fileno()
+        self.read = wsgi_input.raw._sock.recv
+        self.write = wsgi_input.raw._sock.sendall
+        self.fileno = wsgi_input.raw._sock.fileno()
 
 
 class Header(object):
@@ -300,7 +298,7 @@ class Header(object):
     def mask_payload(self, payload):
         payload = bytearray(payload)
         mask = bytearray(self.mask)
-        for i in xrange(self.length):
+        for i in range(self.length):
             payload[i] ^= mask[i % 4]
         return str(payload)
 
@@ -324,7 +322,7 @@ class Header(object):
         data = read(2)
         if len(data) != 2:
             raise WebSocketError("Unexpected EOF while decoding header")
-        first_byte, second_byte = struct.unpack('!BB', data)
+        first_byte, second_byte = struct.unpack(b'!BB', data)
         header = cls(
             fin=first_byte & cls.FIN_MASK == cls.FIN_MASK,
             opcode=first_byte & cls.OPCODE_MASK,
@@ -342,13 +340,13 @@ class Header(object):
             data = read(2)
             if len(data) != 2:
                 raise WebSocketError('Unexpected EOF while decoding header')
-            header.length = struct.unpack('!H', data)[0]
+            header.length = struct.unpack(b'!H', data)[0]
         elif header.length == 127:
             # 64 bit length
             data = read(8)
             if len(data) != 8:
                 raise WebSocketError('Unexpected EOF while decoding header')
-            header.length = struct.unpack('!Q', data)[0]
+            header.length = struct.unpack(b'!Q', data)[0]
         if has_mask:
             mask = read(4)
             if len(mask) != 4:
@@ -370,7 +368,7 @@ class Header(object):
         """
         first_byte = opcode
         second_byte = 0
-        extra = ''
+        extra = b''
         if fin:
             first_byte |= cls.FIN_MASK
         if flags & cls.RSV0_MASK:
@@ -384,13 +382,13 @@ class Header(object):
             second_byte += length
         elif length <= 0xffff:
             second_byte += 126
-            extra = struct.pack('!H', length)
+            extra = struct.pack(b'!H', length)
         elif length <= 0xffffffffffffffff:
             second_byte += 127
-            extra = struct.pack('!Q', length)
+            extra = struct.pack(b'!Q', length)
         else:
             raise FrameTooLargeException
         if mask:
             second_byte |= cls.MASK_MASK
             extra += mask
-        return chr(first_byte) + chr(second_byte) + extra
+        return bytes([first_byte, second_byte]) + extra

@@ -30,7 +30,7 @@ class WebsocketRunServer(WebsocketWSGIServer):
         elif websocket_version not in self.WS_VERSIONS:
             raise HandshakeError('Unsupported WebSocket Version: {0}'.format(websocket_version))
 
-        key = environ.get('HTTP_SEC_WEBSOCKET_KEY', '').strip()
+        key = bytes(environ.get('HTTP_SEC_WEBSOCKET_KEY', '').strip(), "utf-8")
         if not key:
             raise HandshakeError('Sec-WebSocket-Key header is missing/empty')
         try:
@@ -44,13 +44,13 @@ class WebsocketRunServer(WebsocketWSGIServer):
         headers = [
             ('Upgrade', 'websocket'),
             ('Connection', 'Upgrade'),
-            ('Sec-WebSocket-Accept', base64.b64encode(sha1(key + self.WS_GUID).digest())),
+            ('Sec-WebSocket-Accept', str(base64.b64encode(sha1(key + self.WS_GUID).digest()), 'utf-8')),
             ('Sec-WebSocket-Version', str(websocket_version)),
         ]
 
         logger.debug('WebSocket request accepted, switching protocols')
         start_response(force_str('101 Switching Protocols'), headers)
-        start_response.im_self.finish_content()
+        start_response.__self__.finish_content()
         return WebSocket(environ['wsgi.input'])
 
     def select(self, rlist, wlist, xlist, timeout=None):

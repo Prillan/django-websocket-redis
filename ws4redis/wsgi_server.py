@@ -79,29 +79,29 @@ class WebsocketWSGIServer(object):
                         redis_store.publish_message(message)
                     elif fd == redis_fd:
                         response = redis_store.parse_response()
-                        if response[0] == 'message':
+                        if response[0] == b'message':
                             message = response[2]
                             websocket.send(message)
                     else:
                         logger.error('Invalid file descriptor: {0}'.format(fd))
-        except WebSocketError, excpt:
+        except WebSocketError as excpt:
             logger.warning('WebSocketError: ', exc_info=sys.exc_info())
             response = HttpResponse(status=1001, content='Websocket Closed')
         except UpgradeRequiredError:
             logger.info('Websocket upgrade required')
             response = HttpResponseBadRequest(status=426, content=excpt)
-        except HandshakeError, excpt:
+        except HandshakeError as excpt:
             logger.warning('HandshakeError: ', exc_info=sys.exc_info())
             response = HttpResponseBadRequest(content=excpt)
-        except Exception, excpt:
+        except Exception as excpt:
             logger.error('Other Exception: ', exc_info=sys.exc_info())
             response = HttpResponseServerError(content=excpt)
         else:
             response = HttpResponse()
         if websocket:
             websocket.close(code=1001, message='Websocket Closed')
-        if hasattr(start_response, 'im_self') and not start_response.im_self.headers_sent:
+        if hasattr(start_response, 'im_self') and not start_response.__self__.headers_sent:
             status_text = STATUS_CODE_TEXT.get(response.status_code, 'UNKNOWN STATUS CODE')
             status = '{0} {1}'.format(response.status_code, status_text)
-            start_response(force_str(status), response._headers.values())
+            start_response(force_str(status), list(response._headers.values()))
         return response
